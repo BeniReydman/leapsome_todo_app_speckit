@@ -1,0 +1,98 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      target: production
+    environment:
+      PORT: 3000
+      DB_PATH: /data/todos.sqlite
+      NODE_ENV: ${NODE_ENV:-production}
+    volumes:
+      - todo-data:/data
+    networks:
+      - todo
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  frontend:
+    build:
+      context: ./frontend
+      target: production
+    ports:
+      - "8090:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - todo
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  backend-dev:
+    profiles: ["dev"]
+    build:
+      context: ./backend
+      target: test
+    environment:
+      PORT: 3000
+      DB_PATH: /data/todos.sqlite
+      NODE_ENV: development
+    volumes:
+      - ./backend/src:/app/src
+      - todo-dev:/data
+    ports:
+      - "3000:3000"
+    command: ["node", "--watch", "src/server.js"]
+    networks:
+      - todo
+
+  frontend-dev:
+    profiles: ["dev"]
+    build:
+      context: ./frontend
+      target: test
+    environment:
+      NODE_ENV: development
+      API_PROXY_TARGET: http://backend-dev:3000
+    volumes:
+      - ./frontend:/app
+      - frontend-modules:/app/node_modules
+    ports:
+      - "5173:5173"
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
+    depends_on:
+      - backend-dev
+    networks:
+      - todo
+
+  backend-test:
+    profiles: ["test"]
+    build:
+      context: ./backend
+      target: test
+    environment:
+      NODE_ENV: test
+
+  frontend-test:
+    profiles: ["test"]
+    build:
+      context: ./frontend
+      target: test
+    environment:
+      NODE_ENV: test
+
+networks:
+  todo:
+
+volumes:
+  todo-data:
+  todo-dev:
+  frontend-modules:
